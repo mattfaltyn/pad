@@ -68,7 +68,11 @@ All configuration is via environment variables or a config file (`~/.pad/config.
 | `PUBLIC_URL` | — | Alternative to `PAD_URL` using the generic env-var convention. Server-side only — does not affect CLI mode, does not influence the CLI's API endpoint, and is not persisted to `config.toml`. Precedence: `PAD_URL` > `PUBLIC_URL` > constructed `http://host:port`. |
 | `PAD_DATA_DIR` | `~/.pad` | Data directory for SQLite DB, logs, and config |
 | `PAD_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
+| `PAD_LOG_FILE` | — | Write structured server logs to a rotating file instead of stderr. |
+| `PAD_LOG_MAX_BYTES` | `10485760` | Maximum active log-file size when `PAD_LOG_FILE` is set. |
+| `PAD_LOG_BACKUPS` | `5` | Number of rotated log files retained when `PAD_LOG_FILE` is set. |
 | `PAD_MODE` | `local` | Mode: `local`, `remote`, `cloud` |
+| `PAD_AUTO_START_LOCAL_SERVER` | `true` | Let CLI commands spawn an unavailable configured local server. Set false when launchd/systemd owns the process. Equivalent config key: `auto_start_local_server`. |
 
 ### Database
 

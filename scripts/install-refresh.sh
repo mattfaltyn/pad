@@ -386,7 +386,10 @@ disown 2>/dev/null || true
 # host resolves to the primary LAN address in that case. Loopback is always
 # probed: it is the address the previous defect killed, and the one every
 # local CLI call and browser tab uses.
-configured_host="$(flag_value --host "${SERVER_ARGV[@]}" || true)"
+configured_host=""
+if [ ${#SERVER_ARGV[@]} -gt 0 ]; then
+	configured_host="$(flag_value --host "${SERVER_ARGV[@]}" || true)"
+fi
 
 # PORT resolution, in the server's own precedence order.
 #
@@ -396,7 +399,10 @@ configured_host="$(flag_value --host "${SERVER_ARGV[@]}" || true)"
 # (cmd_server.go: `--port`, default 7777) so the case is reachable, and the
 # whole point of this script is that the restart preserves the invocation —
 # a probe that ignores half of that invocation is checking the wrong server.
-configured_port="$(flag_value --port "${SERVER_ARGV[@]}" || true)"
+configured_port=""
+if [ ${#SERVER_ARGV[@]} -gt 0 ]; then
+	configured_port="$(flag_value --port "${SERVER_ARGV[@]}" || true)"
+fi
 # Each source is accepted only if it is NUMERIC, mirroring the application:
 # config.go ignores a non-integer PAD_PORT and falls through to the next
 # source. Without that, a mistyped or inherited PAD_PORT is probed

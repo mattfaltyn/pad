@@ -1,4 +1,4 @@
-.PHONY: build test test-nix-hash test-pg test-pg-down test-pg-project dev clean web dev-web serve restart lint install check vuln web-check web-test web-audit
+.PHONY: build test test-nix-hash test-pg test-pg-down test-pg-project dev clean check-node web dev-web serve restart lint install check vuln web-check web-test web-audit
 
 BINARY=pad
 BUILD_DIR=./cmd/pad
@@ -234,7 +234,10 @@ restart: build-go
 	@sleep 1
 	./$(BINARY) server start --host $(HOST)
 
-web:
+check-node:
+	@node -e 'const major=Number(process.versions.node.split(".")[0]); if (major !== 24) { console.error(`Pad web builds require Node 24.x; found $${process.version}. Use the version pinned by .nvmrc.`); process.exit(1) }'
+
+web: check-node
 	cd web && npm ci && npm run build
 
 dev-web:

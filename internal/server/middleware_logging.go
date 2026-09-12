@@ -50,6 +50,8 @@ func StructuredLogger(next http.Handler) http.Handler {
 			level = slog.LevelError
 		} else if status >= 400 {
 			level = slog.LevelWarn
+		} else if isHealthPath(r.URL.Path) {
+			level = slog.LevelDebug
 		}
 
 		attrs := []slog.Attr{
@@ -70,4 +72,13 @@ func StructuredLogger(next http.Handler) http.Handler {
 
 		slog.LogAttrs(r.Context(), level, "http request", attrs...)
 	})
+}
+
+func isHealthPath(path string) bool {
+	switch path {
+	case "/api/v1/health", "/api/v1/health/live", "/api/v1/health/ready":
+		return true
+	default:
+		return false
+	}
 }

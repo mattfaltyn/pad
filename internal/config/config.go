@@ -34,8 +34,12 @@ type Config struct {
 	PublicURL string `toml:"-"`   // Deployment's public URL used by the server in emailed links (e.g., https://app.getpad.dev). Sourced from the PUBLIC_URL env var only — intentionally NOT persisted to ~/.pad/config.toml so a CLI Save() (via `pad init` / `pad configure`) on a host where PUBLIC_URL is set for unrelated reasons cannot contaminate the user's config file with a stale URL that outlives the env var. Operators who want a config-file equivalent should set `url` (the toml `URL` field). Consulted by PublicLinkBaseURL() only; does NOT influence the CLI's BaseURL() and does NOT flip Mode to remote.
 	Editor    string `toml:"editor"`
 	LogLevel  string `toml:"log_level"`
-	DBPath    string `toml:"-"` // computed, not from config file
-	DataDir   string `toml:"-"` // computed
+	// AutoStartLocalServer lets service-managed installations prevent each
+	// short-lived CLI process from racing the service manager to spawn Pad.
+	// It defaults to true for backward compatibility.
+	AutoStartLocalServer bool   `toml:"auto_start_local_server"`
+	DBPath               string `toml:"-"` // computed, not from config file
+	DataDir              string `toml:"-"` // computed
 
 	ConfigPath      string `toml:"-"`
 	LoadedFromFile  bool   `toml:"-"`
@@ -292,15 +296,16 @@ func DefaultConfig() *Config {
 	homeDir, _ := os.UserHomeDir()
 	dataDir := filepath.Join(homeDir, ".pad")
 	return &Config{
-		Host:               "127.0.0.1",
-		Port:               7777,
-		Editor:             "",
-		LogLevel:           "info",
-		DBPath:             filepath.Join(dataDir, "pad.db"),
-		DataDir:            dataDir,
-		ConfigPath:         filepath.Join(dataDir, "config.toml"),
-		SSEMaxConnections:  1000,
-		SSEMaxPerWorkspace: 100,
+		Host:                 "127.0.0.1",
+		Port:                 7777,
+		Editor:               "",
+		LogLevel:             "info",
+		AutoStartLocalServer: true,
+		DBPath:               filepath.Join(dataDir, "pad.db"),
+		DataDir:              dataDir,
+		ConfigPath:           filepath.Join(dataDir, "config.toml"),
+		SSEMaxConnections:    1000,
+		SSEMaxPerWorkspace:   100,
 		// A generous default. The bound exists so one user cannot exhaust
 		// the global budget for everyone — the failure the per-workspace
 		// limit alone could not prevent, since the watch stream has no
@@ -368,6 +373,14 @@ func Load() (*Config, error) {
 		cfg.LoadedFromEnv = true
 		if cfg.Mode == "" {
 			cfg.Mode = ModeRemote
+		}
+	}
+	if v := os.Getenv("PAD_AUTO_START_LOCAL_SERVER"); v != "" {
+		if on, err := strconv.ParseBool(v); err == nil {
+			cfg.AutoStartLocalServer = on
+			cfg.LoadedFromEnv = true
+		} else {
+			slog.Warn("PAD_AUTO_START_LOCAL_SERVER is not a boolean and was ignored", "value", v)
 		}
 	}
 	// PUBLIC_URL is the deployment's public URL, used by the server to build
@@ -568,6 +581,12 @@ func (c *Config) IsConfigured() bool {
 // ManagesLocalServer reports whether this client configuration should
 // auto-manage a local Pad server process.
 func (c *Config) ManagesLocalServer() bool {
+	return c.IsConfigured() && c.Mode == ModeLocal && c.AutoStartLocalServer
+}
+
+// TargetsLocalServer reports whether the CLI is explicitly configured for its
+// local server, independent of whether this process is allowed to spawn it.
+func (c *Config) TargetsLocalServer() bool {
 	return c.IsConfigured() && c.Mode == ModeLocal
 }
 

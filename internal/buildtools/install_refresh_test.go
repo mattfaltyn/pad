@@ -363,6 +363,9 @@ func TestInstallRefresh_OrdinaryRefreshSucceeds(t *testing.T) {
 	if res.err != nil {
 		t.Fatalf("ordinary refresh failed: %v\nstdout=%s\nstderr=%s", res.err, res.stdout, res.stderr)
 	}
+	if strings.TrimSpace(res.stderr) != "" {
+		t.Errorf("ordinary refresh with no captured argv wrote to stderr: %q", res.stderr)
+	}
 	if !strings.Contains(res.stdout, "server restarted and answering on: 127.0.0.1") {
 		t.Errorf("success path did not report the probed addresses; stdout=%s", res.stdout)
 	}

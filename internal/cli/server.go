@@ -16,12 +16,15 @@ func EnsureServer(cfg *config.Config) error {
 	// Only an explicitly configured local client should auto-manage a local
 	// background process. Unconfigured or external clients should connect only
 	// to their configured target.
-	if !cfg.ManagesLocalServer() {
+	if !cfg.TargetsLocalServer() {
 		return nil
 	}
 
 	if isServerHealthy(cfg.Host, cfg.Port) {
 		return nil
+	}
+	if !cfg.AutoStartLocalServer {
+		return fmt.Errorf("local Pad server at %s is unavailable and automatic startup is disabled; check the configured service manager", cfg.Addr())
 	}
 
 	// Start server as background process

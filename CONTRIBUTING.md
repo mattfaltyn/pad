@@ -20,7 +20,7 @@ Found a problem that isn't an issue yet? Open one describing it (and how to repr
 ### Prerequisites
 
 - [Go 1.26+](https://go.dev/dl/)
-- [Node.js 22+](https://nodejs.org/)
+- [Node.js 24.x](https://nodejs.org/) (the version pinned by `.nvmrc` and CI)
 - Make
 
 ### Setup

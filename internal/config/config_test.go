@@ -135,6 +135,14 @@ func TestManagesLocalServerRequiresConfiguredLocalMode(t *testing.T) {
 	if !cfg.ManagesLocalServer() {
 		t.Fatal("expected configured local mode to manage a local server")
 	}
+	cfg.AutoStartLocalServer = false
+	if cfg.ManagesLocalServer() {
+		t.Fatal("expected explicit auto-start disable to prevent local server management")
+	}
+	if !cfg.TargetsLocalServer() {
+		t.Fatal("expected explicit local mode to keep targeting the local server")
+	}
+	cfg.AutoStartLocalServer = true
 
 	cfg.Mode = ModeRemote
 	if cfg.ManagesLocalServer() {

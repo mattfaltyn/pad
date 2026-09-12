@@ -1,6 +1,13 @@
 package server
 
-import "testing"
+import (
+	"bytes"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
 
 // TestRedactQueryString covers the F6 leak guard: sensitive keys (token,
 // password, secret, api_key / api-key) must have their values replaced
@@ -87,5 +94,39 @@ func TestRedactQueryString(t *testing.T) {
 				t.Fatalf("redactQueryString(%q) = %q, want %q", tc.in, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestStructuredLoggerSuppressesSuccessfulHealthNoiseAtInfo(t *testing.T) {
+	old := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(old) })
+	var logs bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
+	handler := StructuredLogger(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/health", nil))
+	if logs.Len() != 0 {
+		t.Fatalf("successful health request logged at info: %s", logs.String())
+	}
+
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/items", nil))
+	if !strings.Contains(logs.String(), "path=/api/v1/items") {
+		t.Fatalf("ordinary request missing from info logs: %s", logs.String())
+	}
+}
+
+func TestStructuredLoggerKeepsFailedHealthRequests(t *testing.T) {
+	old := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(old) })
+	var logs bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	handler := StructuredLogger(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/health/ready", nil))
+	if !strings.Contains(logs.String(), "level=ERROR") {
+		t.Fatalf("failed health request not logged: %s", logs.String())
 	}
 }
