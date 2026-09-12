@@ -48,6 +48,12 @@ If the conventions list includes items, treat them as project rules you must fol
 
 Bootstrap replaces the four separate calls the skill used to make (`pad project dashboard`, `pad collection list`, `pad item list conventions ...`, `pad role list`). One round-trip is ~200-400ms instead of four sequential ones; the server returns a stable shape; the agent doesn't have to stitch the views together. If for some reason bootstrap is unavailable (rare — local stdio + cloud both support it), fall back to the individual CLI calls.
 
+### Sandboxed local execution
+
+The agent shell and a local Pad server can have different loopback permissions. In Codex, keep `pad` as a direct command: shell redirection such as `< file` can turn it into a shell-wrapper invocation and prevent a narrow Pad execution rule from matching. For `--stdin`, launch the bare `pad ... --stdin` command and stream the body through the process's stdin. If the harness cannot stream stdin, request narrowly scoped permission to run Pad with loopback access and retry once.
+
+If Pad reports that its health check was `blocked by execution permissions`, or the underlying error says `operation not permitted`, treat that as a sandbox denial — **not evidence that Pad is down**. Retry the same direct command with loopback permission. After any ambiguous write failure, inspect the target before retrying so a response lost after persistence cannot create a duplicate.
+
 **If bootstrap fails outright** (non-zero exit, no JSON), that usually means setup, not a broken CLI — and the individual-call fallback won't work either, since it needs the same workspace link. This is expected in a brand-new or not-yet-linked project; don't report it as a generic error.
 
 **Read the stderr.** Two different problems share this failure, and they need opposite handling:

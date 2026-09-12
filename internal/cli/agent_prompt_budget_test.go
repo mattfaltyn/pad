@@ -27,9 +27,37 @@ func TestAgentSkillPromptBudget(t *testing.T) {
 			if len(payload) > agentSkillPromptBudget {
 				t.Fatalf("%s installed skill payload is %d bytes; budget is %d", agent, len(payload), agentSkillPromptBudget)
 			}
-			for _, required := range []string{"pad bootstrap", "do not rerun bootstrap", "issue IDs", "convention_index", "pad agent guide"} {
+			for _, required := range []string{
+				"pad bootstrap",
+				"do not rerun bootstrap",
+				"issue IDs",
+				"convention_index",
+				"pad agent guide",
+				"Shell redirection",
+				"operation not permitted",
+				"stream the body",
+			} {
 				if !contains(string(payload), required) {
 					t.Errorf("%s installed skill is missing core guidance %q", agent, required)
+				}
+			}
+		})
+	}
+}
+
+func TestFullAgentSkillsExplainSandboxedLocalExecution(t *testing.T) {
+	for name, path := range map[string]string{
+		"embedded": filepath.Join("..", "..", "skills", "pad", "SKILL.md"),
+		"plugin":   filepath.Join("..", "..", "plugin", "skills", "pad", "SKILL.md"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			payload, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, required := range []string{"shell redirection", "operation not permitted", "stream the body"} {
+				if !contains(string(payload), required) {
+					t.Errorf("agent skill is missing sandbox guidance %q", required)
 				}
 			}
 		})

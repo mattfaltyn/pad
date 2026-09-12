@@ -1,18 +1,28 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/PerpetualSoftware/pad/internal/config"
 )
 
+var errServerUnhealthy = errors.New("server health endpoint returned a non-OK status")
+
 // EnsureServer checks if the pad server is running; if not, starts it in the background.
 func EnsureServer(cfg *config.Config) error {
+	return ensureServer(cfg, checkServerHealth)
+}
+
+func ensureServer(cfg *config.Config, healthCheck func(string, int) error) error {
 	// Only an explicitly configured local client should auto-manage a local
 	// background process. Unconfigured or external clients should connect only
 	// to their configured target.
@@ -20,11 +30,24 @@ func EnsureServer(cfg *config.Config) error {
 		return nil
 	}
 
-	if isServerHealthy(cfg.Host, cfg.Port) {
+	healthErr := healthCheck(cfg.Host, cfg.Port)
+	if healthErr == nil {
 		return nil
 	}
+	if errors.Is(healthErr, os.ErrPermission) {
+		return fmt.Errorf(
+			"local Pad server health check at %s was blocked by execution permissions; allow loopback access or rerun the Pad command outside the sandbox: %w",
+			cfg.Addr(), healthErr)
+	}
+	if errors.Is(healthErr, errServerUnhealthy) {
+		return fmt.Errorf(
+			"local Pad server at %s answered its health check but is unhealthy; refusing to start a duplicate process: %w",
+			cfg.Addr(), healthErr)
+	}
 	if !cfg.AutoStartLocalServer {
-		return fmt.Errorf("local Pad server at %s is unavailable and automatic startup is disabled; check the configured service manager", cfg.Addr())
+		return fmt.Errorf(
+			"local Pad server at %s is unavailable and automatic startup is disabled; check the configured service manager: %w",
+			cfg.Addr(), healthErr)
 	}
 
 	// Start server as background process
@@ -65,12 +88,13 @@ func EnsureServer(cfg *config.Config) error {
 	// Wait for server to become healthy
 	for i := 0; i < 30; i++ {
 		time.Sleep(100 * time.Millisecond)
-		if isServerHealthy(cfg.Host, cfg.Port) {
+		healthErr = healthCheck(cfg.Host, cfg.Port)
+		if healthErr == nil {
 			return nil
 		}
 	}
 
-	return fmt.Errorf("server failed to start within 3 seconds. Check %s for errors", cfg.LogFile())
+	return fmt.Errorf("server failed to start within 3 seconds; last health check failed: %w; check %s for errors", healthErr, cfg.LogFile())
 }
 
 // StopServer stops the server this CLI's config points at — or explains why it
@@ -181,13 +205,26 @@ func IsServerRunning(cfg *config.Config) bool {
 }
 
 func isServerHealthy(host string, port int) bool {
+	return checkServerHealth(host, port) == nil
+}
+
+func checkServerHealth(host string, port int) error {
 	client := &http.Client{Timeout: 1 * time.Second}
-	resp, err := client.Get(fmt.Sprintf("http://%s:%d/api/v1/health", host, port))
+	endpoint := serverHealthEndpoint(host, port)
+	resp, err := client.Get(endpoint)
 	if err != nil {
-		return false
+		return err
 	}
 	defer resp.Body.Close()
-	return resp.StatusCode == http.StatusOK
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("%w: %s", errServerUnhealthy, resp.Status)
+	}
+	return nil
+}
+
+func serverHealthEndpoint(host string, port int) string {
+	host = strings.TrimPrefix(strings.TrimSuffix(host, "]"), "[")
+	return fmt.Sprintf("http://%s/api/v1/health", net.JoinHostPort(host, strconv.Itoa(port)))
 }
 
 // ClaimPIDFile records this process in the PID file and holds the platform's

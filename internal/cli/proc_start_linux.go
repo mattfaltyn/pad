@@ -3,10 +3,13 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 )
+
+var errProcStatMalformed = errors.New("/proc stat is malformed")
 
 // procStartToken returns a stable owner-identity token for a pid on
 // Linux: the process's start time (field 22 of /proc/<pid>/stat, in clock

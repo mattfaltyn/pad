@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -35,8 +36,9 @@ type serverInfoConfig struct {
 }
 
 type serverInfoConnection struct {
-	Reachable bool   `json:"reachable"`
-	Error     string `json:"error,omitempty"`
+	Reachable          bool   `json:"reachable"`
+	HealthCheckBlocked bool   `json:"health_check_blocked,omitempty"`
+	Error              string `json:"error,omitempty"`
 }
 
 type serverInfoAuth struct {
@@ -63,6 +65,7 @@ type serverInfoWorkspace struct {
 
 type serverInfoLocal struct {
 	BindAddr      string `json:"bind_addr"`
+	ServerStatus  string `json:"server_status"`
 	ServerRunning bool   `json:"server_running"`
 	PID           *int   `json:"pid,omitempty"`
 	PIDFile       string `json:"pid_file"`
@@ -80,7 +83,8 @@ func infoCmd() *cobra.Command {
 
 This command reports local configuration, reachability, auth/session state, and
 local runtime details when applicable. It does not auto-start the server and it
-does not inspect remote server internals.`,
+does not inspect remote server internals. If execution permissions block the
+local health check, reachability and server state are reported as unknown.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			report, err := collectServerInfo(getConfig())
 			if err != nil {
@@ -146,8 +150,9 @@ func collectServerInfo(cfg *config.Config) (*serverInfoReport, error) {
 	client := cli.NewClientFromURL(cfg.BaseURL())
 	client.SetAuthToken("")
 
-	if err := client.Health(); err != nil {
-		report.Connection.Error = err.Error()
+	if healthErr := client.Health(); healthErr != nil {
+		report.Connection.Error = healthErr.Error()
+		report.Connection.HealthCheckBlocked = errors.Is(healthErr, os.ErrPermission)
 	} else {
 		report.Connection.Reachable = true
 		// Probe with the token every other command would use: the
@@ -174,7 +179,7 @@ func collectServerInfo(cfg *config.Config) (*serverInfoReport, error) {
 	}
 
 	if includeLocalRuntime(cfg) {
-		report.Local = collectLocalInfo(cfg)
+		report.Local = collectLocalInfo(cfg, report.Connection)
 	}
 
 	return report, nil
@@ -187,10 +192,17 @@ func includeLocalRuntime(cfg *config.Config) bool {
 	return !cfg.IsConfigured() && cfg.URL == ""
 }
 
-func collectLocalInfo(cfg *config.Config) *serverInfoLocal {
+func collectLocalInfo(cfg *config.Config, connection serverInfoConnection) *serverInfoLocal {
+	serverStatus := "unreachable"
+	if connection.Reachable {
+		serverStatus = "healthy"
+	} else if connection.HealthCheckBlocked {
+		serverStatus = "unknown"
+	}
 	info := &serverInfoLocal{
 		BindAddr:      cfg.Addr(),
-		ServerRunning: cli.IsServerRunning(cfg),
+		ServerStatus:  serverStatus,
+		ServerRunning: connection.Reachable,
 		PIDFile:       cfg.PIDFile(),
 		LogFile:       cfg.LogFile(),
 		DBPath:        cfg.DBPath,
@@ -233,7 +245,7 @@ func printServerInfo(report *serverInfoReport) {
 
 	fmt.Println()
 	fmt.Println("Connection")
-	fmt.Fprintf(w, "Reachable:\t%s\n", yesNo(report.Connection.Reachable))
+	fmt.Fprintf(w, "Reachable:\t%s\n", connectionReachability(report.Connection))
 	if report.Connection.Error != "" {
 		fmt.Fprintf(w, "Last error:\t%s\n", report.Connection.Error)
 	}
@@ -271,7 +283,7 @@ func printServerInfo(report *serverInfoReport) {
 		fmt.Println()
 		fmt.Println("Local Runtime")
 		fmt.Fprintf(w, "Bind address:\t%s\n", report.Local.BindAddr)
-		fmt.Fprintf(w, "Server running:\t%s\n", yesNo(report.Local.ServerRunning))
+		fmt.Fprintf(w, "Server running:\t%s\n", localServerRunning(report.Local))
 		if report.Local.PID != nil {
 			fmt.Fprintf(w, "PID:\t%d\n", *report.Local.PID)
 		}
@@ -285,6 +297,20 @@ func printServerInfo(report *serverInfoReport) {
 	}
 
 	w.Flush()
+}
+
+func connectionReachability(connection serverInfoConnection) string {
+	if connection.HealthCheckBlocked {
+		return "unknown (health check blocked)"
+	}
+	return yesNo(connection.Reachable)
+}
+
+func localServerRunning(local *serverInfoLocal) string {
+	if local.ServerStatus == "unknown" {
+		return "unknown (health check blocked)"
+	}
+	return yesNo(local.ServerRunning)
 }
 
 func configSource(cfg serverInfoConfig) string {

@@ -8,12 +8,9 @@ import (
 	"strconv"
 )
 
-// Probe failures that mean "the owner is GONE" (as opposed to "the owner
+// Probe failure that means "the owner is GONE" (as opposed to "the owner
 // could not be examined"). See pidLiveness.
-var (
-	errProcZombie        = errors.New("process is a zombie")
-	errProcStatMalformed = errors.New("/proc stat is malformed")
-)
+var errProcZombie = errors.New("process is a zombie")
 
 // Session owner identity (TASK-2767, IDEA-2750 part 2).
 //

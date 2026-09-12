@@ -79,6 +79,9 @@ func TestCollectServerInfoRemoteAuthenticated(t *testing.T) {
 	if !report.Connection.Reachable {
 		t.Fatal("expected server to be reachable")
 	}
+	if report.Connection.HealthCheckBlocked {
+		t.Fatal("healthy connection was marked as blocked")
+	}
 	if !report.Auth.CredentialsPresent {
 		t.Fatal("expected credentials to be present")
 	}
@@ -126,6 +129,9 @@ func TestCollectServerInfoLocalRuntime(t *testing.T) {
 	if report.Local == nil {
 		t.Fatal("expected local runtime info")
 	}
+	if report.Local.ServerStatus != "unreachable" {
+		t.Fatalf("server status = %q, want unreachable", report.Local.ServerStatus)
+	}
 	if report.Local.BindAddr != "127.0.0.1:65530" {
 		t.Fatalf("unexpected bind addr %q", report.Local.BindAddr)
 	}
@@ -140,6 +146,18 @@ func TestCollectServerInfoLocalRuntime(t *testing.T) {
 	}
 	if report.Connection.Reachable {
 		t.Fatal("expected local server to be unreachable in test")
+	}
+}
+
+func TestServerInfoRendersBlockedHealthCheckAsUnknown(t *testing.T) {
+	connection := serverInfoConnection{HealthCheckBlocked: true}
+	if got := connectionReachability(connection); got != "unknown (health check blocked)" {
+		t.Fatalf("connectionReachability = %q", got)
+	}
+
+	local := &serverInfoLocal{ServerStatus: "unknown"}
+	if got := localServerRunning(local); got != "unknown (health check blocked)" {
+		t.Fatalf("localServerRunning = %q", got)
 	}
 }
 
