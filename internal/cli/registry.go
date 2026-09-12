@@ -46,20 +46,7 @@ func LoadRegistry() (*Registry, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return &Registry{}, nil
-		}
-		return nil, fmt.Errorf("read registry: %w", err)
-	}
-
-	var reg Registry
-	if err := json.Unmarshal(data, &reg); err != nil {
-		return nil, fmt.Errorf("parse registry %s: %w; repair or move the file, which was left unchanged", path, err)
-	}
-	return &reg, nil
+	return loadRegistryPath(path)
 }
 
 // Save writes the registry to disk.
@@ -82,7 +69,6 @@ func (r *Registry) Save() error {
 }
 
 func (r *Registry) saveUnlocked(path string) error {
-
 	data, err := json.MarshalIndent(r, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal registry: %w", err)

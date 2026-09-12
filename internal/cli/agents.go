@@ -128,7 +128,7 @@ pad item show TASK-5 --agent
 pad item list [collection] --format json
 pad item create <collection> "Title" [flags]
 pad item update TASK-5 [flags]
-pad item comment TASK-5 -m "Message"
+pad item comment TASK-5 "Message"
 pad playbook list --format json
 pad playbook show <slug> --format markdown
 ` + "```" + `
