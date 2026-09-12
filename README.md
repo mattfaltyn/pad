@@ -390,8 +390,8 @@ pad mcp install claude-desktop   # or: cursor, windsurf, claude-code, codex, --a
 Cursor and Codex installations can opt into compact tool results and startup context:
 
 ```bash
-pad mcp install cursor --compact-results --compact-context --structured-only
-pad mcp install codex --compact-results --compact-context --structured-only
+pad mcp install cursor --compact-results --compact-context
+pad mcp install codex --compact-results --compact-context
 ```
 
 Pad keeps the result channel each client currently exposes to its model: JSON
