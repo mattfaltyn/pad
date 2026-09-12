@@ -425,6 +425,32 @@ func TestBaseURLIgnoresPublicURL(t *testing.T) {
 	}
 }
 
+func TestIPv6HostFormatting(t *testing.T) {
+	for _, test := range []struct {
+		host     string
+		wantAddr string
+		wantURL  string
+	}{
+		{host: "::1", wantAddr: "[::1]:7777", wantURL: "http://[::1]:7777"},
+		{host: "[::1]", wantAddr: "[::1]:7777", wantURL: "http://[::1]:7777"},
+		{host: "fe80::1%lo0", wantAddr: "[fe80::1%lo0]:7777", wantURL: "http://[fe80::1%25lo0]:7777"},
+	} {
+		cfg := &Config{Host: test.host, Port: 7777}
+		if got := cfg.Addr(); got != test.wantAddr {
+			t.Fatalf("Addr() for %q = %q, want %q", test.host, got, test.wantAddr)
+		}
+		for name, got := range map[string]string{
+			"BaseURL":           cfg.BaseURL(),
+			"PublicLinkBaseURL": cfg.PublicLinkBaseURL(),
+			"BrowserURL":        cfg.BrowserURL(),
+		} {
+			if got != test.wantURL {
+				t.Fatalf("%s for %q = %q, want %q", name, test.host, got, test.wantURL)
+			}
+		}
+	}
+}
+
 // TestPublicLinkBaseURLPrecedence pins the resolution order on the
 // server-side accessor used to build emailed link targets: URL >
 // PublicURL > constructed http://host:port. This is what fixes BUG-899

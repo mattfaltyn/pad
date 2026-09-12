@@ -1188,16 +1188,7 @@ func serveCmd() *cobra.Command {
 // See TASK-1167 / PLAN-1166. Called only on first start with zero
 // users in self-host mode.
 func logBootstrapBanner(token string, cfg *config.Config, tokenPath string) {
-	host := cfg.Host
-	switch host {
-	case "", "0.0.0.0", "::", "[::]":
-		// PAD_HOST not bound to a specific interface — render as
-		// <your-host> placeholder in the banner since we don't know
-		// which network interface the operator wants to reach this
-		// instance from.
-		host = "<your-host>"
-	}
-	url := fmt.Sprintf("http://%s:%d/setup#token=%s", host, cfg.Port, token)
+	url := fmt.Sprintf("http://%s/setup#token=%s", setupHostPort(cfg), token)
 	banner := fmt.Sprintf(`
 ========================================================================
   Pad first-run setup
@@ -1247,12 +1238,7 @@ func logBootstrapBanner(token string, cfg *config.Config, tokenPath string) {
 // Self-host only; cmd/pad/main.go gates this call behind the
 // !cfg.IsCloudServer() branch.
 func logOpenBootstrapBanner(cfg *config.Config) {
-	host := cfg.Host
-	switch host {
-	case "", "0.0.0.0", "::", "[::]":
-		host = "<your-host>"
-	}
-	url := fmt.Sprintf("http://%s:%d/setup", host, cfg.Port)
+	url := fmt.Sprintf("http://%s/setup", setupHostPort(cfg))
 	banner := fmt.Sprintf(`
 ========================================================================
   Pad first-run setup (open mode)
@@ -1274,6 +1260,17 @@ func logOpenBootstrapBanner(cfg *config.Config) {
 `, url)
 	fmt.Fprint(os.Stderr, banner)
 	slog.Warn("first-run bootstrap is OPEN (PAD_BYPASS_SETUP_TOKEN=true) — anyone reachable on the WebUI port can claim the first admin until one is created")
+}
+
+func setupHostPort(cfg *config.Config) string {
+	switch cfg.Host {
+	case "", "0.0.0.0", "::", "[::]":
+		// A bind-all address does not identify which interface the operator
+		// should visit, so preserve the established placeholder.
+		return "<your-host>:" + strconv.Itoa(cfg.Port)
+	default:
+		return cfg.Addr()
+	}
 }
 
 // --- stop ---

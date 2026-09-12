@@ -104,6 +104,22 @@ func TestServerHealthEndpointFormatsHost(t *testing.T) {
 	}
 }
 
+func TestNewClientFormatsIPv6Host(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	for _, test := range []struct {
+		host string
+		want string
+	}{
+		{host: "::1", want: "http://[::1]:7777/api/v1"},
+		{host: "fe80::1%lo0", want: "http://[fe80::1%25lo0]:7777/api/v1"},
+	} {
+		client := NewClient(test.host, 7777)
+		if client.baseURL != test.want {
+			t.Fatalf("NewClient base URL for %q = %q, want %q", test.host, client.baseURL, test.want)
+		}
+	}
+}
+
 func TestEnsureServerSkipsWhenClientDoesNotManageLocalServer(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

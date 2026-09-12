@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"strconv"
@@ -223,8 +224,12 @@ func checkServerHealth(host string, port int) error {
 }
 
 func serverHealthEndpoint(host string, port int) string {
+	return localServerBaseURL(host, port) + "/api/v1/health"
+}
+
+func localServerBaseURL(host string, port int) string {
 	host = strings.TrimPrefix(strings.TrimSuffix(host, "]"), "[")
-	return fmt.Sprintf("http://%s/api/v1/health", net.JoinHostPort(host, strconv.Itoa(port)))
+	return (&url.URL{Scheme: "http", Host: net.JoinHostPort(host, strconv.Itoa(port))}).String()
 }
 
 // ClaimPIDFile records this process in the PID file and holds the platform's

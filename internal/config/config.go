@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -646,7 +648,7 @@ func (c *Config) ValidateCloudSecureCookies() error {
 
 // Addr returns the host:port listen address.
 func (c *Config) Addr() string {
-	return fmt.Sprintf("%s:%d", c.Host, c.Port)
+	return joinHostPort(c.Host, c.Port)
 }
 
 // BaseURL returns the base URL for the API.
@@ -662,7 +664,7 @@ func (c *Config) BaseURL() string {
 	if c.URL != "" {
 		return strings.TrimRight(c.URL, "/")
 	}
-	return fmt.Sprintf("http://%s:%d", c.Host, c.Port)
+	return httpServerURL(c.Host, c.Port)
 }
 
 // PublicLinkBaseURL returns the URL the server should embed in emailed
@@ -696,7 +698,7 @@ func (c *Config) PublicLinkBaseURL() string {
 	if c.PublicURL != "" {
 		return strings.TrimRight(c.PublicURL, "/")
 	}
-	return fmt.Sprintf("http://%s:%d", c.Host, c.Port)
+	return httpServerURL(c.Host, c.Port)
 }
 
 // BrowserURL returns a URL suitable for displaying to humans in CLI prompts
@@ -715,7 +717,16 @@ func (c *Config) BrowserURL() string {
 	case "", "0.0.0.0", "::", "[::]":
 		host = "127.0.0.1"
 	}
-	return fmt.Sprintf("http://%s:%d", host, c.Port)
+	return httpServerURL(host, c.Port)
+}
+
+func joinHostPort(host string, port int) string {
+	host = strings.TrimPrefix(strings.TrimSuffix(host, "]"), "[")
+	return net.JoinHostPort(host, strconv.Itoa(port))
+}
+
+func httpServerURL(host string, port int) string {
+	return (&url.URL{Scheme: "http", Host: joinHostPort(host, port)}).String()
 }
 
 func (c *Config) PIDFile() string {
