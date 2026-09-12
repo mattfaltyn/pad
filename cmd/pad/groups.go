@@ -190,6 +190,7 @@ func agentCmd() *cobra.Command {
 		agentGuideCmd(),
 		agentUpdateCmd(),
 		agentStatusCmd(),
+		agentForgetCmd(),
 	)
 	return cmd
 }

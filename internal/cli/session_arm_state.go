@@ -137,6 +137,16 @@ func armStateKey(socket, cwd string) (key string, headless bool) {
 	if socket != "" {
 		return "sess-" + shortHash(socket), false
 	}
+	// Resolve aliases such as macOS /var -> /private/var before hashing.
+	// Otherwise a caller holding the path it chdir'd to and a later os.Getwd
+	// can name the same directory with different arm-state keys.
+	if abs, err := filepath.Abs(cwd); err == nil {
+		cwd = abs
+	}
+	if real, err := filepath.EvalSymlinks(cwd); err == nil {
+		cwd = real
+	}
+	cwd = filepath.Clean(cwd)
 	return "repo-" + shortHash(cwd), true
 }
 

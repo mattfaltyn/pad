@@ -211,7 +211,12 @@ func ToolSkillPath(tool AgentTool) string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(cwd, tool.SkillDir, tool.SkillFile)
+	return ToolSkillPathAt(cwd, tool)
+}
+
+// ToolSkillPathAt returns the skill destination for tool under projectPath.
+func ToolSkillPathAt(projectPath string, tool AgentTool) string {
+	return filepath.Join(projectPath, tool.SkillDir, tool.SkillFile)
 }
 
 // ToolInstalled checks if the skill file exists for the given tool.
@@ -230,14 +235,28 @@ func InstallForTool(tool AgentTool, content []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return InstallForToolAt(cwd, tool, content)
+}
 
-	skillDir := filepath.Join(cwd, tool.SkillDir)
+// InstallForToolAt writes a tool skill below projectPath without changing the
+// process working directory. The final rename is atomic so concurrent readers
+// never observe a partially written skill.
+func InstallForToolAt(projectPath string, tool AgentTool, content []byte) (string, error) {
+	info, err := os.Stat(projectPath)
+	if err != nil {
+		return "", fmt.Errorf("inspect project %s: %w", projectPath, err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("project path is not a directory: %s", projectPath)
+	}
+
+	skillDir := filepath.Join(projectPath, tool.SkillDir)
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
 		return "", fmt.Errorf("create directory %s: %w", skillDir, err)
 	}
 
 	destPath := filepath.Join(skillDir, tool.SkillFile)
-	if err := os.WriteFile(destPath, content, 0644); err != nil {
+	if err := atomicWriteFile(destPath, content, 0644); err != nil {
 		return "", fmt.Errorf("write skill file: %w", err)
 	}
 

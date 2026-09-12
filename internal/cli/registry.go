@@ -44,7 +44,7 @@ func registryPath() (string, error) {
 func LoadRegistry() (*Registry, error) {
 	path, err := registryPath()
 	if err != nil {
-		return &Registry{}, nil
+		return nil, err
 	}
 
 	data, err := os.ReadFile(path)
@@ -57,8 +57,7 @@ func LoadRegistry() (*Registry, error) {
 
 	var reg Registry
 	if err := json.Unmarshal(data, &reg); err != nil {
-		// Corrupted file — start fresh
-		return &Registry{}, nil
+		return nil, fmt.Errorf("parse registry %s: %w; repair or move the file, which was left unchanged", path, err)
 	}
 	return &reg, nil
 }
@@ -74,18 +73,72 @@ func (r *Registry) Save() error {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return fmt.Errorf("create registry directory: %w", err)
 	}
+	unlock, err := lockRegistry(filepath.Dir(path))
+	if err != nil {
+		return fmt.Errorf("lock registry: %w", err)
+	}
+	defer unlock()
+	return r.saveUnlocked(path)
+}
+
+func (r *Registry) saveUnlocked(path string) error {
 
 	data, err := json.MarshalIndent(r, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal registry: %w", err)
 	}
 
-	return os.WriteFile(path, data, 0600)
+	if err := atomicWriteFile(path, data, 0600); err != nil {
+		return fmt.Errorf("write registry: %w", err)
+	}
+	return nil
+}
+
+// MutateRegistry serializes a read-modify-write operation across Pad processes.
+func MutateRegistry(mutate func(*Registry) error) error {
+	path, err := registryPath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return fmt.Errorf("create registry directory: %w", err)
+	}
+	unlock, err := lockRegistry(filepath.Dir(path))
+	if err != nil {
+		return fmt.Errorf("lock registry: %w", err)
+	}
+	defer unlock()
+
+	reg, err := loadRegistryPath(path)
+	if err != nil {
+		return err
+	}
+	if err := mutate(reg); err != nil {
+		return err
+	}
+	return reg.saveUnlocked(path)
+}
+
+func loadRegistryPath(path string) (*Registry, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &Registry{}, nil
+		}
+		return nil, fmt.Errorf("read registry: %w", err)
+	}
+	var reg Registry
+	if err := json.Unmarshal(data, &reg); err != nil {
+		return nil, fmt.Errorf("parse registry %s: %w; repair or move the file, which was left unchanged", path, err)
+	}
+	return &reg, nil
 }
 
 // Record adds or updates an installation entry.
 func (r *Registry) Record(projectPath, workspace, tool, skillPath, version string) {
 	now := time.Now().UTC()
+	projectPath = cleanAbs(projectPath)
+	skillPath = cleanAbs(skillPath)
 
 	// Update existing entry if same project + tool
 	for i := range r.Installations {
@@ -108,6 +161,34 @@ func (r *Registry) Record(projectPath, workspace, tool, skillPath, version strin
 		InstalledAt: now,
 		Version:     version,
 	})
+}
+
+func cleanAbs(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return filepath.Clean(path)
+	}
+	return filepath.Clean(abs)
+}
+
+// RemoveProjects removes registry entries for the exact project paths given.
+// It intentionally leaves installed skill files untouched.
+func (r *Registry) RemoveProjects(projectPaths []string) int {
+	wanted := make(map[string]struct{}, len(projectPaths))
+	for _, path := range projectPaths {
+		wanted[cleanAbs(path)] = struct{}{}
+	}
+	kept := r.Installations[:0]
+	removed := 0
+	for _, inst := range r.Installations {
+		if _, ok := wanted[cleanAbs(inst.ProjectPath)]; ok {
+			removed++
+			continue
+		}
+		kept = append(kept, inst)
+	}
+	r.Installations = kept
+	return removed
 }
 
 // Prune removes entries whose skill files no longer exist on disk.
@@ -194,7 +275,7 @@ func (r *Registry) UpdateAll(embeddedContent []byte, version string) (updated in
 			continue
 		}
 
-		if err := os.WriteFile(inst.SkillPath, expected, 0644); err != nil {
+		if err := atomicWriteFile(inst.SkillPath, expected, 0644); err != nil {
 			errors = append(errors, fmt.Errorf("%s (%s): %w", inst.ProjectPath, tool.Label, err))
 			continue
 		}

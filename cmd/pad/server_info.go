@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -197,7 +196,7 @@ func collectLocalInfo(cfg *config.Config) *serverInfoLocal {
 		DBPath:        cfg.DBPath,
 	}
 
-	if pid, ok := readPID(cfg.PIDFile()); ok {
+	if pid, ok := cli.ReadPID(cfg.PIDFile()); ok {
 		info.PID = &pid
 	}
 
@@ -207,18 +206,6 @@ func collectLocalInfo(cfg *config.Config) *serverInfoLocal {
 	}
 
 	return info
-}
-
-func readPID(path string) (int, bool) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return 0, false
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil || pid <= 0 {
-		return 0, false
-	}
-	return pid, true
 }
 
 func printServerInfo(report *serverInfoReport) {

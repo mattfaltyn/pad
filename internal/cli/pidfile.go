@@ -56,6 +56,15 @@ func readPIDRecord(path string) (rec pidRecord, ok bool) {
 	return parsePIDRecord(data)
 }
 
+// ReadPID returns the process ID from either the current JSON PID-file format
+// or the legacy bare-integer format. It is intentionally narrower than
+// readPIDRecord so callers cannot mistake diagnostic metadata for ownership
+// proof; signalling must still go through StopServer.
+func ReadPID(path string) (int, bool) {
+	rec, ok := readPIDRecord(path)
+	return rec.PID, ok
+}
+
 // readAll reads an already-open PID file from the start. Errors collapse to
 // empty, which parsePIDRecord reports as unreadable — the same answer an
 // absent file gives, and the same refusal follows from it.

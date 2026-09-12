@@ -143,6 +143,30 @@ func TestCollectServerInfoLocalRuntime(t *testing.T) {
 	}
 }
 
+func TestCollectServerInfoReadsStructuredPIDRecord(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	cfg := config.DefaultConfig()
+	cfg.Mode = config.ModeLocal
+	cfg.LoadedFromFile = true
+	cfg.Port = 65530
+	if err := os.MkdirAll(filepath.Dir(cfg.PIDFile()), 0o755); err != nil {
+		t.Fatalf("mkdir pid dir: %v", err)
+	}
+	if err := os.WriteFile(cfg.PIDFile(), []byte(`{"pid":4321,"started_at":"2026-09-12T00:00:00Z","exe":"/tmp/pad"}`), 0o644); err != nil {
+		t.Fatalf("write pid: %v", err)
+	}
+
+	report, err := collectServerInfo(cfg)
+	if err != nil {
+		t.Fatalf("collectServerInfo: %v", err)
+	}
+	if report.Local == nil || report.Local.PID == nil || *report.Local.PID != 4321 {
+		t.Fatalf("expected structured pid 4321, got %#v", report.Local)
+	}
+}
+
 func TestIncludeLocalRuntimeWhenUnconfigured(t *testing.T) {
 	cfg := config.DefaultConfig()
 	if !includeLocalRuntime(cfg) {

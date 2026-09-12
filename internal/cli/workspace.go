@@ -59,8 +59,19 @@ func DetectWorkspace(flagOverride string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return DetectWorkspaceFrom(cwd, "")
+}
 
-	dir := cwd
+// DetectWorkspaceFrom walks up from startDir looking for .pad.toml.
+func DetectWorkspaceFrom(startDir, flagOverride string) (string, error) {
+	if flagOverride != "" {
+		return flagOverride, nil
+	}
+
+	dir, err := filepath.Abs(startDir)
+	if err != nil {
+		return "", err
+	}
 	for {
 		configPath := filepath.Join(dir, ".pad.toml")
 		if _, err := os.Stat(configPath); err == nil {

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"unicode"
 
@@ -105,6 +107,7 @@ func agentGuideSlug(s string) string {
 }
 
 func installCmd() *cobra.Command {
+	var projectPaths []string
 	cmd := &cobra.Command{
 		Use:   "install [tool]",
 		Short: "Install the /pad skill for your AI coding tools",
@@ -127,14 +130,25 @@ Examples:
   pad agent install              # Auto-detect and install
   pad agent install claude       # Install for Claude Code
   pad agent install cursor       # Install for Cursor/Codex/Windsurf/OpenCode
+  pad agent install cursor --project ../api --project ../web
   pad agent install opencode     # Install for OpenCode
   pad agent install --all        # Install for all detected tools
   pad agent status               # Show supported tools and status`,
 		ValidArgs: cli.AllToolNames(),
+		Args:      cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			listFlag, _ := cmd.Flags().GetBool("list")
 			allFlag, _ := cmd.Flags().GetBool("all")
 			updateFlag, _ := cmd.Flags().GetBool("update")
+			if len(projectPaths) > 0 {
+				if listFlag || allFlag || updateFlag {
+					return errors.New("--project requires one explicit tool and cannot be combined with --list, --all, or --update")
+				}
+				if len(args) != 1 {
+					return errors.New("--project requires exactly one tool")
+				}
+				return installForProjects(cmd, args[0], projectPaths)
+			}
 
 			if listFlag {
 				return installList()
@@ -158,6 +172,7 @@ Examples:
 	cmd.Flags().Bool("list", false, "list supported tools and installation status")
 	cmd.Flags().Bool("all", false, "install for all detected tools")
 	cmd.Flags().Bool("update", false, "update all installed tool integrations")
+	cmd.Flags().StringArrayVar(&projectPaths, "project", nil, "project directory to install into (repeatable; requires a tool)")
 	return cmd
 }
 
@@ -187,15 +202,14 @@ func installList() error {
 	}
 
 	// Show global installation registry
-	reg, err := cli.LoadRegistry()
-	if err != nil || len(reg.Installations) == 0 {
+	var statuses []cli.InstallationStatus
+	if err := cli.MutateRegistry(func(reg *cli.Registry) error {
+		reg.Prune()
+		statuses = reg.Status(pad.PadSkill)
 		return nil
+	}); err != nil {
+		return err
 	}
-
-	reg.Prune()
-	_ = reg.Save()
-
-	statuses := reg.Status(pad.PadSkill)
 	if len(statuses) == 0 {
 		return nil
 	}
@@ -244,40 +258,34 @@ func installUpdate() error {
 			continue
 		}
 		fmt.Printf("  ✓ Updated %s → %s\n", tool.Label, path)
-		recordInstallation(tool.Name, path)
+		if err := recordInstallation(tool.Name, path); err != nil {
+			fmt.Fprintf(os.Stderr, "  warning: record %s installation: %v\n", tool.Label, err)
+		}
 		localUpdated++
 	}
 
 	// Phase 2: Update all tracked installations across other projects
-	reg, err := cli.LoadRegistry()
-	if err != nil {
-		if localUpdated == 0 {
-			fmt.Println("No tools installed. Run 'pad agent install' first.")
-		}
+	globalUpdated := 0
+	installationCount := 0
+	var updateErrors []error
+	err := cli.MutateRegistry(func(reg *cli.Registry) error {
+		reg.Prune()
+		globalUpdated, updateErrors = reg.UpdateAll(pad.PadSkill, version)
+		installationCount = len(reg.Installations)
 		return nil
+	})
+	if err != nil {
+		return err
 	}
-
-	cwd, _ := os.Getwd()
-	reg.Prune()
-	globalUpdated, updateErrors := reg.UpdateAll(pad.PadSkill, version)
-	_ = reg.Save()
 
 	for _, e := range updateErrors {
 		fmt.Fprintf(os.Stderr, "  warning: %v\n", e)
 	}
 
-	// Subtract local updates that were also counted as global (same project path)
-	overlapCount := 0
-	for _, inst := range reg.Installations {
-		if inst.ProjectPath == cwd {
-			overlapCount++
-		}
-	}
-
 	remoteUpdated := globalUpdated
 	total := localUpdated + remoteUpdated
 	if total == 0 {
-		if localUpdated == 0 && len(reg.Installations) == 0 {
+		if localUpdated == 0 && installationCount == 0 {
 			fmt.Println("No tools installed. Run 'pad agent install' first.")
 		} else {
 			fmt.Println("All installations are up to date.")
@@ -293,20 +301,20 @@ func installUpdate() error {
 }
 
 // recordInstallation stores a skill install in the global registry (~/.pad/installations.json).
-func recordInstallation(toolName, skillPath string) {
-	reg, err := cli.LoadRegistry()
-	if err != nil {
-		return // best-effort — don't break install on registry errors
-	}
-
+func recordInstallation(toolName, skillPath string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
-		return
+		return err
 	}
+	return recordInstallationAt(cwd, toolName, skillPath)
+}
 
-	ws, _ := cli.DetectWorkspace("")
-	reg.Record(cwd, ws, toolName, skillPath, version)
-	_ = reg.Save()
+func recordInstallationAt(projectPath, toolName, skillPath string) error {
+	ws, _ := cli.DetectWorkspaceFrom(projectPath, "")
+	return cli.MutateRegistry(func(reg *cli.Registry) error {
+		reg.Record(projectPath, ws, toolName, skillPath, version)
+		return nil
+	})
 }
 
 func installForTool(name string) error {
@@ -321,8 +329,77 @@ func installForTool(name string) error {
 		return err
 	}
 	fmt.Printf("Installed /pad skill for %s → %s\n", tool.Label, path)
-	recordInstallation(tool.Name, path)
-	return nil
+	return recordInstallation(tool.Name, path)
+}
+
+func installForProjects(cmd *cobra.Command, name string, projectPaths []string) error {
+	tool := cli.ResolveTool(name)
+	if tool == nil {
+		return fmt.Errorf("unknown tool %q. Run 'pad agent status' to see supported tools", name)
+	}
+
+	type installed struct {
+		projectPath string
+		skillPath   string
+		workspace   string
+	}
+	var successes []installed
+	var errs []error
+	content := cli.FormatForTool(*tool, pad.PadSkill)
+	for _, rawPath := range projectPaths {
+		projectPath, err := filepath.Abs(rawPath)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s: resolve project path: %w", rawPath, err))
+			continue
+		}
+		projectPath = filepath.Clean(projectPath)
+		path, err := cli.InstallForToolAt(projectPath, *tool, content)
+		if err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "  ✗ %s: %v\n", projectPath, err)
+			errs = append(errs, err)
+			continue
+		}
+		workspace, _ := cli.DetectWorkspaceFrom(projectPath, "")
+		successes = append(successes, installed{projectPath: projectPath, skillPath: path, workspace: workspace})
+		fmt.Fprintf(cmd.OutOrStdout(), "  ✓ %s → %s\n", projectPath, path)
+	}
+
+	if len(successes) > 0 {
+		if err := cli.MutateRegistry(func(reg *cli.Registry) error {
+			for _, success := range successes {
+				reg.Record(success.projectPath, success.workspace, tool.Name, success.skillPath, version)
+			}
+			return nil
+		}); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func agentForgetCmd() *cobra.Command {
+	var projectPaths []string
+	cmd := &cobra.Command{
+		Use:   "forget",
+		Short: "Remove projects from the installation registry without deleting skill files",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(projectPaths) == 0 {
+				return errors.New("at least one --project is required")
+			}
+			removed := 0
+			if err := cli.MutateRegistry(func(reg *cli.Registry) error {
+				removed = reg.RemoveProjects(projectPaths)
+				return nil
+			}); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Forgot %d installation record(s); skill files were left unchanged.\n", removed)
+			return nil
+		},
+	}
+	cmd.Flags().StringArrayVar(&projectPaths, "project", nil, "project directory to forget (repeatable)")
+	return cmd
 }
 
 func installAll() error {
@@ -340,7 +417,9 @@ func installAll() error {
 			continue
 		}
 		fmt.Printf("  ✓ %s → %s\n", tool.Label, path)
-		recordInstallation(tool.Name, path)
+		if err := recordInstallation(tool.Name, path); err != nil {
+			fmt.Fprintf(os.Stderr, "  warning: record %s installation: %v\n", tool.Label, err)
+		}
 	}
 	return nil
 }
@@ -379,6 +458,9 @@ func installInteractive() error {
 				continue
 			}
 			fmt.Printf("  ✓ %s → %s\n", tool.Label, path)
+			if err := recordInstallation(tool.Name, path); err != nil {
+				fmt.Fprintf(os.Stderr, "  warning: record %s installation: %v\n", tool.Label, err)
+			}
 		}
 		return nil
 	}
@@ -412,7 +494,9 @@ func installInteractive() error {
 			continue
 		}
 		fmt.Printf("  ✓ %s → %s\n", tool.Label, path)
-		recordInstallation(tool.Name, path)
+		if err := recordInstallation(tool.Name, path); err != nil {
+			fmt.Fprintf(os.Stderr, "  warning: record %s installation: %v\n", tool.Label, err)
+		}
 	}
 	return nil
 }
