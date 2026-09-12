@@ -216,7 +216,7 @@ make build
 cp pad ~/.local/bin/   # or /usr/local/bin/
 ```
 
-Requires Go 1.26+ and Node.js 22+. Alternatively, `nix develop` provides a shell with the exact Go and Node versions pinned — see the [Nix](#nix) section below.
+Requires Go 1.26+ and Node.js 24.x. Alternatively, `nix develop` provides a shell with the exact Go and Node versions pinned — see the [Nix](#nix) section below.
 
 The `go install github.com/PerpetualSoftware/pad/cmd/pad@latest` path is not supported for the full Pad binary, because the web UI must be built and embedded during the source build.
 
@@ -387,17 +387,19 @@ pad mcp install claude-desktop   # or: cursor, windsurf, claude-code, codex, --a
 # Restart the client; pad shows up as the "pad" MCP server.
 ```
 
-Cursor and Codex installations can opt into compact tool results:
+Cursor and Codex installations can opt into compact tool results and startup context:
 
 ```bash
-pad mcp install cursor --compact-results
-pad mcp install codex --compact-results
+pad mcp install cursor --compact-results --compact-context --structured-only
+pad mcp install codex --compact-results --compact-context --structured-only
 ```
 
 Pad keeps the result channel each client currently exposes to its model: JSON
 text for Cursor and `structuredContent` for Codex. It removes the duplicate
 channel only from successful structured results; errors and one-channel results
 remain unchanged. Leave the flag off for other clients or compatibility testing.
+`--compact-context` keeps the operating contract and action catalog while moving
+detailed guidance to on-demand Pad commands; the full context remains the default.
 
 `pad mcp install` writes each client's native config: JSON `mcpServers` for
 Claude Desktop / Cursor / Windsurf, a **project-local `.mcp.json`** in the current

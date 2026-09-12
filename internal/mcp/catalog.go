@@ -211,6 +211,7 @@ type CatalogOptions struct {
 	PadVersion     string
 	StructuredOnly bool
 	TextOnly       bool
+	CompactContext bool
 }
 
 // RegisterCatalog installs the v0.2 catalog tools on srv. Returns the
@@ -236,7 +237,7 @@ func RegisterCatalog(srv *server.MCPServer, opts CatalogOptions) (int, error) {
 	}
 	count := 0
 	for _, def := range Catalog {
-		tool := buildToolFromDef(def)
+		tool := buildToolFromDefWithMode(def, opts.CompactContext)
 		handler := makeFanOutHandler(def, env)
 		srv.AddTool(tool, handler)
 		count++
@@ -324,8 +325,16 @@ func annotationForDef(def ToolDef) mcp.ToolAnnotation {
 // Schema discriminated unions are awkward in mcp-go's helpers, and
 // the description carries the action × params matrix anyway.
 func buildToolFromDef(def ToolDef) mcp.Tool {
+	return buildToolFromDefWithMode(def, false)
+}
+
+func buildToolFromDefWithMode(def ToolDef, compact bool) mcp.Tool {
+	description := def.Description
+	if compact {
+		description = compactToolDescription(def)
+	}
 	opts := []mcp.ToolOption{
-		mcp.WithDescription(def.Description),
+		mcp.WithDescription(description),
 		mcp.WithToolAnnotation(annotationForDef(def)),
 	}
 
@@ -334,7 +343,7 @@ func buildToolFromDef(def ToolDef) mcp.Tool {
 	actions := sortedActionNames(def)
 	opts = append(opts,
 		mcp.WithString("action",
-			mcp.Description("The action to perform. See tool description for required parameters per action."),
+			mcp.Description(compactDescription("The action to perform. See tool description for required parameters per action.", compact)),
 			mcp.Required(),
 			mcp.Enum(actions...),
 		),
@@ -343,23 +352,46 @@ func buildToolFromDef(def ToolDef) mcp.Tool {
 	if def.Schema.Workspace {
 		opts = append(opts,
 			mcp.WithString("workspace",
-				mcp.Description(
+				mcp.Description(compactDescription(
 					"Workspace slug to target for this call. An explicit value here "+
 						"ALWAYS wins. Otherwise resolution depends on the server: a "+
 						"single-user local server falls back to the session default set "+
 						"via pad_set_workspace, then the CWD-linked workspace from "+
 						".pad.toml. A multi-user/remote server does NOT persist a session "+
-						"default, so you must pass workspace explicitly on every call.",
+						"default, so you must pass workspace explicitly on every call.", compact,
+				),
 				),
 			),
 		)
 	}
 
 	for _, p := range def.Schema.Params {
+		if compact {
+			p.Description = compactDescription(p.Description, true)
+		}
 		opts = append(opts, paramDefToToolOption(p))
 	}
 
 	return mcp.NewTool(def.Name, opts...)
+}
+
+func compactToolDescription(def ToolDef) string {
+	first := compactDescription(def.Description, true)
+	return first + " Actions: " + strings.Join(sortedActionNames(def), ", ") + "."
+}
+
+func compactDescription(description string, compact bool) string {
+	if !compact {
+		return description
+	}
+	description = strings.TrimSpace(description)
+	if i := strings.Index(description, ". "); i >= 0 {
+		return description[:i+1]
+	}
+	if i := strings.IndexByte(description, '\n'); i >= 0 {
+		return strings.TrimSpace(description[:i])
+	}
+	return description
 }
 
 // paramDefToToolOption maps a ParamDef to the matching mcp-go helper.

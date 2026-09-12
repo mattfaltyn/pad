@@ -34,6 +34,10 @@ type Options struct {
 	// Debug enables verbose stderr logging from the MCP server.
 	// stdout is reserved for JSON-RPC traffic; logs always go to stderr.
 	Debug bool
+
+	// CompactContext advertises the short operating contract. Full instructions
+	// remain the default for backward compatibility.
+	CompactContext bool
 }
 
 // NewServer constructs a pad MCP server. Call Run(ctx) to start it.
@@ -46,6 +50,10 @@ func NewServer(opts Options) *Server {
 	version := opts.Version
 	if version == "" {
 		version = FallbackVersion
+	}
+	instructions := Instructions
+	if opts.CompactContext {
+		instructions = CompactInstructions
 	}
 	mcp := server.NewMCPServer(
 		ServerName,
@@ -69,7 +77,7 @@ func NewServer(opts Options) *Server {
 		// build time from instructions.md so the source of truth is
 		// versioned with the binary; HTTPHandlerDispatcher (PLAN-943)
 		// advertises the same string.
-		server.WithInstructions(Instructions),
+		server.WithInstructions(instructions),
 	)
 	return &Server{mcp: mcp, debug: opts.Debug}
 }

@@ -594,6 +594,8 @@ type Installer struct {
 	// TextOnly selects the equivalent text-preserving mode for clients that do
 	// not expose structured-only results to the model.
 	TextOnly bool
+	// CompactContext appends --compact-context to the MCP serve command.
+	CompactContext bool
 	// Home overrides os.UserHomeDir when non-empty (test-only).
 	Home string
 	// CWD overrides os.Getwd when non-empty (test-only). Used to resolve
@@ -678,6 +680,9 @@ func (i *Installer) Install(agentName string) (string, bool, error) {
 		args = append(args, "--structured-only")
 	} else if i.TextOnly {
 		args = append(args, "--text-only")
+	}
+	if i.CompactContext {
+		args = append(args, "--compact-context")
 	}
 	modified, err := addEntry(agent, path, i.Binary, args)
 	return path, modified, err

@@ -48,6 +48,7 @@ See https://getpad.dev/mcp/local for client configuration.`,
 func mcpInstallCmd() *cobra.Command {
 	var allFlag bool
 	var compactResults bool
+	var compactContext bool
 	cmd := &cobra.Command{
 		Use:   "install [agent]",
 		Short: "Install pad as an MCP server for a client app",
@@ -92,11 +93,24 @@ are preserved — only the "pad" entry is touched.`,
 			if compactResults && (allFlag || len(args) == 0) {
 				return fmt.Errorf("--compact-results requires an explicit cursor or codex agent")
 			}
+			if compactContext && (allFlag || len(args) == 0) {
+				return fmt.Errorf("--compact-context requires an explicit cursor or codex agent")
+			}
 			binary, err := os.Executable()
 			if err != nil || binary == "" {
 				binary = os.Args[0]
 			}
 			inst := &mcpserver.Installer{Binary: binary}
+			if compactContext {
+				agent, err := mcpserver.FindAgent(args[0])
+				if err != nil {
+					return err
+				}
+				if agent.Name != "cursor" && agent.Name != "codex" {
+					return fmt.Errorf("--compact-context is supported only for cursor and codex")
+				}
+				inst.CompactContext = true
+			}
 			if compactResults {
 				agent, err := mcpserver.FindAgent(args[0])
 				if err != nil {
@@ -123,6 +137,7 @@ are preserved — only the "pad" entry is touched.`,
 	}
 	cmd.Flags().BoolVar(&allFlag, "all", false, "install for every supported agent")
 	cmd.Flags().BoolVar(&compactResults, "compact-results", false, "configure one model-visible result channel (Cursor/Codex)")
+	cmd.Flags().BoolVar(&compactContext, "compact-context", false, "configure compact instructions and tool descriptions (Cursor/Codex)")
 	return cmd
 }
 
@@ -215,6 +230,9 @@ func runMCPInstallOne(cmd *cobra.Command, inst *mcpserver.Installer, agent strin
 		} else if inst.TextOnly {
 			serveArgs += " --text-only"
 		}
+		if inst.CompactContext {
+			serveArgs += " --compact-context"
+		}
 		fmt.Fprintf(w, "Installed pad MCP entry for %s\n  config: %s\n  command: %s %s\n", agent, path, inst.Binary, serveArgs)
 		fmt.Fprintln(w, "  → Restart the client to pick up the new server entry.")
 	} else {
@@ -256,6 +274,7 @@ func mcpServeCmd() *cobra.Command {
 	var debug bool
 	var structuredOnly bool
 	var textOnly bool
+	var compactContext bool
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Run the MCP server over stdio",
@@ -284,8 +303,9 @@ Shuts down cleanly on EOF, SIGINT, or SIGTERM.`,
 				return fmt.Errorf("--structured-only and --text-only are mutually exclusive")
 			}
 			srv := mcpserver.NewServer(mcpserver.Options{
-				Version: fullVersion(),
-				Debug:   debug,
+				Version:        fullVersion(),
+				Debug:          debug,
+				CompactContext: compactContext,
 			})
 
 			// Build cmdhelp Document from the live cobra tree. Same
@@ -357,6 +377,7 @@ Shuts down cleanly on EOF, SIGINT, or SIGTERM.`,
 				BootstrapFetcher: bootstrapFetcher,
 				StructuredOnly:   structuredOnly,
 				TextOnly:         textOnly,
+				CompactContext:   compactContext,
 			}); err != nil {
 				return fmt.Errorf("pad mcp serve: register tools: %w", err)
 			}
@@ -392,5 +413,6 @@ Shuts down cleanly on EOF, SIGINT, or SIGTERM.`,
 	cmd.Flags().BoolVar(&debug, "debug", false, "verbose logging on stderr (development)")
 	cmd.Flags().BoolVar(&structuredOnly, "structured-only", false, "omit duplicate structured-result JSON text")
 	cmd.Flags().BoolVar(&textOnly, "text-only", false, "omit duplicate structuredContent while keeping JSON text")
+	cmd.Flags().BoolVar(&compactContext, "compact-context", false, "advertise compact instructions and tool descriptions")
 	return cmd
 }

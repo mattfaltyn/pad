@@ -22,3 +22,8 @@ import _ "embed"
 //
 //go:embed instructions.md
 var Instructions string
+
+// CompactInstructions preserves the operating contract while removing the
+// long-form reference that clients would otherwise resend every conversation.
+//go:embed instructions_compact.md
+var CompactInstructions string

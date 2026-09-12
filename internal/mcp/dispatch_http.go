@@ -231,17 +231,12 @@ var noRemoteEquivalent = map[string]string{
 	// inherently lives in the agent's local checkout, not on
 	// pad-cloud.
 	//
-	// These hints USED to send agents to `item update --field
-	// github_pr=...`, and that advice was wrong: ingestFieldKVP stores
-	// every `field` value as a STRING, so the PR data lands
-	// double-encoded, no link appears, and the call reports success —
-	// the worst shape a workaround can have (BUG-2696, found reviewing
-	// BUG-2627). Until that is fixed there is no working remote path,
-	// and saying so is better than sending an agent down one that
-	// silently does nothing.
-	"github link":   "needs the agent's local git branch + `gh` CLI. There is currently NO working remote alternative: `item update --field github_pr=...` stores the value as a string, so no link appears even though the call succeeds (BUG-2696). Hand PR linking to a human rather than retrying.",
+	// `field: ["github_pr=..."]` remains string-only and therefore wrong for
+	// this object. BUG-2850 added the typed `fields` object on remote MCP,
+	// which is now the working alternative when the agent already has PR data.
+	"github link":   "needs the agent's local git branch + `gh` CLI. On remote MCP, fetch the PR with the agent's GitHub tools and update the item with `fields: {\"github_pr\": {...}}`; do not use string-shaped `field: [\"github_pr=...\"]`.",
 	"github status": "needs the agent's local git branch + `gh` CLI; query GitHub directly via the agent's tools",
-	"github unlink": "needs the agent's local git branch + `gh` CLI. Same as `github link`: `item update --field github_pr=null` stores the string \"null\" rather than clearing the key (BUG-2696), so there is no working remote path today.",
+	"github unlink": "needs the agent's local git branch + `gh` CLI. Remote MCP does not accept null field patches yet; use the local command when unlinking.",
 	// `project reconcile` shells out to `gh` CLI to compare stored
 	// PR metadata against live GitHub state — same locality argument.
 	"project reconcile": "shells out to `gh` CLI to compare stored PR metadata against live GitHub state; agents reconcile via their own GitHub tools + `item update`",

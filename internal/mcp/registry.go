@@ -59,6 +59,7 @@ type RegistryOptions struct {
 	// clients that expose only that channel to the model. Both are opt-in.
 	StructuredOnly bool
 	TextOnly       bool
+	CompactContext bool
 }
 
 // Register installs pad's MCP tools on srv: the built-in
@@ -95,6 +96,7 @@ func Register(srv *server.MCPServer, opts RegistryOptions) (int, error) {
 		PadVersion:     opts.PadVersion,
 		StructuredOnly: opts.StructuredOnly,
 		TextOnly:       opts.TextOnly,
+		CompactContext: opts.CompactContext,
 	})
 	if err != nil {
 		return 0, fmt.Errorf("register catalog: %w", err)

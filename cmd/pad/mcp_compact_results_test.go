@@ -52,6 +52,27 @@ func TestMCPInstallCompactResultsRejectsUnsupportedClient(t *testing.T) {
 	}
 }
 
+func TestMCPInstallCompactContext(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cmd := mcpInstallCmd()
+	cmd.SetArgs([]string{"codex", "--compact-results", "--compact-context"})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	body, err := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"--structured-only", "--compact-context"} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("installed config = %s; missing %s", body, want)
+		}
+	}
+}
+
 func TestMCPServeRejectsConflictingResultModes(t *testing.T) {
 	cmd := mcpServeCmd()
 	cmd.SetArgs([]string{"--structured-only", "--text-only"})

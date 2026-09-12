@@ -991,6 +991,42 @@ func TestDispatchItemUpdate_NonStringPromotedValueIsNotDropped(t *testing.T) {
 	}
 }
 
+func TestDispatchItemUpdate_GitHubPRFieldsObjectStaysNative(t *testing.T) {
+	captured := newRequestCapture()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/workspaces/docapp/items/TASK-5", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ref":"TASK-5","fields":"{}"}`))
+		case http.MethodPatch:
+			captured.ServeHTTP(w, r)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ref":"TASK-5"}`))
+		}
+	})
+
+	d := &HTTPHandlerDispatcher{Handler: mux, UserResolver: fixedUserResolver(&models.User{ID: "caller"})}
+	pr := map[string]any{"number": float64(1338), "url": "https://github.com/PerpetualSoftware/pad/pull/1338"}
+	ctx := WithDispatchInput(context.Background(), map[string]any{
+		"workspace":     "docapp",
+		"ref":           "TASK-5",
+		fieldsNativeKey: map[string]any{"github_pr": pr},
+	})
+	res, err := d.Dispatch(ctx, []string{"item", "update"}, nil)
+	if err != nil || res.IsError {
+		t.Fatalf("Dispatch err=%v IsError=%v: %#v", err, res != nil && res.IsError, res)
+	}
+	var body map[string]any
+	if err := json.Unmarshal([]byte(captured.lastBody), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	patch := body["fields_patch"].(map[string]any)
+	if _, ok := patch["github_pr"].(map[string]any); !ok {
+		t.Fatalf("github_pr = %[1]T(%[1]v), want native object", patch["github_pr"])
+	}
+}
+
 // ...and an empty string still means "not supplied", so widening the type
 // check did not turn a no-op param into a write. Same invariant every other
 // declared string param on this tool holds.

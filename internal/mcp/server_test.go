@@ -126,6 +126,19 @@ func TestServer_InitializeAdvertisesInstructions(t *testing.T) {
 	}
 }
 
+func TestServer_InitializeAdvertisesCompactInstructions(t *testing.T) {
+	srv := NewServer(Options{Version: "instr-test", CompactContext: true})
+	res, cleanup := runHandshake(t, srv)
+	defer cleanup()
+
+	if res.Instructions != CompactInstructions {
+		t.Fatalf("initialize response did not use compact instructions")
+	}
+	if len(res.Instructions) >= len(Instructions) {
+		t.Fatalf("compact instructions are not smaller: compact=%d full=%d", len(res.Instructions), len(Instructions))
+	}
+}
+
 // truncate is a small helper for failure messages — keeps long
 // instructions text from spilling into terminal output when an
 // assertion fires.
