@@ -3,11 +3,23 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
 )
+
+// lockError explains a failed registry lock. A permission error on the lock file usually
+// means this process cannot write ~/.pad (for example, a sandboxed shell), so say that
+// instead of printing only the raw open error.
+func lockError(err error) error {
+	if errors.Is(err, fs.ErrPermission) {
+		return fmt.Errorf("lock registry: %w (this process cannot write ~/.pad, for example under a sandbox; the installation registry was not updated)", err)
+	}
+	return fmt.Errorf("lock registry: %w", err)
+}
 
 // Installation records where a skill was installed for a specific tool in a specific project.
 type Installation struct {
@@ -62,7 +74,7 @@ func (r *Registry) Save() error {
 	}
 	unlock, err := lockRegistry(filepath.Dir(path))
 	if err != nil {
-		return fmt.Errorf("lock registry: %w", err)
+		return lockError(err)
 	}
 	defer unlock()
 	return r.saveUnlocked(path)
@@ -91,7 +103,7 @@ func MutateRegistry(mutate func(*Registry) error) error {
 	}
 	unlock, err := lockRegistry(filepath.Dir(path))
 	if err != nil {
-		return fmt.Errorf("lock registry: %w", err)
+		return lockError(err)
 	}
 	defer unlock()
 

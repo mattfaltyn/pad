@@ -650,6 +650,10 @@ func linkCmd() *cobra.Command {
 
 Unlike 'pad workspace init', this does NOT create a new workspace — it only links to one that already exists.
 
+After linking, it offers to install the /pad skill for each AI tool it detects. In a non-interactive
+shell (for example, an agent), it installs the skill for those tools without asking. Run 'pad agent status'
+to see which installations are recorded in the registry.
+
   pad workspace link myproject
 
 Use 'pad workspace list' to see available workspaces.`,
@@ -739,7 +743,7 @@ func offerSkillInstall() {
 		for _, tool := range detected {
 			path := cli.ToolSkillPath(tool)
 			if path != "" {
-				recordInstallation(tool.Name, path)
+				recordInstalledSkill(tool.Name, path)
 			}
 		}
 		fmt.Printf("\n/pad skill already installed for %d tool(s). Run 'pad agent update' to update.\n", len(detected))
@@ -768,7 +772,7 @@ func offerSkillInstall() {
 				continue
 			}
 			fmt.Printf("Installed /pad skill for %s → %s\n", tool.Label, path)
-			recordInstallation(tool.Name, path)
+			recordInstalledSkill(tool.Name, path)
 		}
 		return
 	}
@@ -800,7 +804,7 @@ func offerSkillInstall() {
 			// Already installed — just ensure it's tracked in the registry
 			path := cli.ToolSkillPath(tool)
 			if path != "" {
-				recordInstallation(tool.Name, path)
+				recordInstalledSkill(tool.Name, path)
 			}
 			continue
 		}
@@ -812,7 +816,15 @@ func offerSkillInstall() {
 		}
 		color.New(color.FgGreen).Printf("  ✓ %s", tool.Label)
 		fmt.Printf(" → %s\n", color.New(color.Faint).Sprint(path))
-		recordInstallation(tool.Name, path)
+		recordInstalledSkill(tool.Name, path)
+	}
+}
+
+// recordInstalledSkill records a skill install in the registry. A failure does not stop the
+// link, but it is reported: a missing record makes `pad agent status` omit this project.
+func recordInstalledSkill(toolName, skillPath string) {
+	if err := recordInstallation(toolName, skillPath); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: %s skill is at %s but was not recorded in the registry: %v\n", toolName, skillPath, err)
 	}
 }
 
